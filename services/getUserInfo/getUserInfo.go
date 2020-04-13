@@ -13,10 +13,6 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-// From services directory:
-//   GOOS=linux GOARCH=amd64 go build -o getUserInfo getUserInfo.go
-//   zip getUserInfo.zip getUser
-
 type getUserInfoRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`

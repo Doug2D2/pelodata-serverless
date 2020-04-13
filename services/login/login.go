@@ -14,10 +14,6 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-// From services directory:
-//   GOOS=linux GOARCH=amd64 go build -o login login.go
-//   zip login.zip login
-
 type loginRequest struct {
 	Username string `json:"username_or_email"`
 	Password string `json:"password"`
