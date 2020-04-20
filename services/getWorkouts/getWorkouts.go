@@ -150,8 +150,6 @@ func getWorkouts(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 		req.Header.Add("Cookie", cookie)
 	}
 
-	fmt.Printf("Header: %v", req.Header)
-
 	resp, err := client.Do(req)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
