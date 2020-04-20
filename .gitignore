@@ -2,5 +2,7 @@ services/getUserInfo/getUserInfo
 services/getUserInfo/getUserInfo.zip
 services/login/login
 services/login/login.zip
-services/getUserWorkouts/getUserWorkouts
-services/getUserWorkouts/getUserWorkouts.zip
+services/getWorkouts/getWorkouts
+services/getWorkouts/getWorkouts.zip
+services/getFilters/getFilters
+services/getFIlters/getFilters.zip
