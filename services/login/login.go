@@ -14,6 +14,9 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
+// Endpoint:
+//   POST https://api.onepeloton.com/auth/login
+
 type loginRequest struct {
 	Username string `json:"username_or_email"`
 	Password string `json:"password"`
@@ -28,6 +31,8 @@ const basePelotonURL = "https://api.onepeloton.com"
 
 // login returns the user's Peloton user id based on their username or email and password
 func login(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
+	url := fmt.Sprintf("%s/auth/login", basePelotonURL)
+
 	req := loginRequest{}
 	err := json.Unmarshal([]byte(request.Body), &req)
 	if err != nil {
@@ -52,7 +57,7 @@ func login(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.
 		}, fmt.Errorf("Unable to marshal request: %s", err)
 	}
 
-	resp, err := http.Post(fmt.Sprintf("%s/auth/login", basePelotonURL), "application/json", bytes.NewBuffer(loginBytes))
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(loginBytes))
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,

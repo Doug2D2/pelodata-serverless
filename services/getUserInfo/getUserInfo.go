@@ -13,10 +13,11 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
-type getUserInfoRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
+// Endpoint:
+//   GET https://api.onepeloton.com/api/user/{userID}
+
+// Path Params:
+//  userID - Peloton user id
 
 type getUserInfoResponse struct {
 	UserID        string `json:"id"`
@@ -48,8 +49,10 @@ func getUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 		}, errors.New("user_id must be provided")
 	}
 
+	url := fmt.Sprintf("%s/api/user/%s", basePelotonURL, userID)
+
 	client := &http.Client{}
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/user/%s", basePelotonURL, userID), nil)
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
@@ -60,7 +63,7 @@ func getUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to get user's workouts from Peloton: %s", err)
+		}, fmt.Errorf("Unable to get user's info from Peloton: %s", err)
 	}
 	defer resp.Body.Close()
 
@@ -81,14 +84,14 @@ func getUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	err = json.Unmarshal(body, getUserInfoRes)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
-			StatusCode: 500,
+			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("Unable to unmarshal response: %s", err)
 	}
 
 	reply, err := json.Marshal(getUserInfoRes)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
-			StatusCode: 500,
+			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("Unable to marshal response: %s", err)
 	}
 

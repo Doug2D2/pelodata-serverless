@@ -7,6 +7,7 @@ create a zip file. For example, if you want to update the login function run the
 
  - GOOS=linux GOARCH=amd64 go build -o login login.go
  - zip login.zip login
+ - aws s3 cp login.zip s3://bucketName
 
 You will then need to update the code in Lambda using the AWS console. In the future the goal is to make this an automated 
 process on PR merge or commit.
