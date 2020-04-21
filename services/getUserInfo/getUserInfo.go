@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -37,16 +36,28 @@ const basePelotonURL = "https://api.onepeloton.com"
 func getUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
 	userID, ok := request.PathParameters["userId"]
 	if !ok {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "Path parameter user_id is required: /getUserInfo/{user_id}"
+		}`, http.StatusBadRequest)
+
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
-		}, errors.New("user_id must be provided")
+			Body:       errBody,
+		}, nil
 	}
 
 	userID = strings.TrimSpace(userID)
 	if userID == "" {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "Path parameter user_id is required: /getUserInfo/{user_id}"
+		}`, http.StatusBadRequest)
+
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
-		}, errors.New("user_id must be provided")
+			Body:       errBody,
+		}, nil
 	}
 
 	url := fmt.Sprintf("%s/api/user/%s", basePelotonURL, userID)
@@ -67,17 +78,24 @@ func getUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) (event
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode > 399 {
-		return events.APIGatewayProxyResponse{
-			StatusCode: resp.StatusCode,
-		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
-	}
-
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("Unable to read response body: %s", err)
+	}
+
+	if resp.StatusCode > 399 {
+		if body != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: resp.StatusCode,
+				Body:       string(body),
+			}, nil
+		}
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: resp.StatusCode,
+		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
 	}
 
 	getUserInfoRes := &getUserInfoResponse{}

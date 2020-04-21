@@ -6,3 +6,5 @@ services/getWorkouts/getWorkouts
 services/getWorkouts/getWorkouts.zip
 services/getFilters/getFilters
 services/getFilters/getFilters.zip
+services/getCategories/getCategories
+services/getCategories/getCategories.zip

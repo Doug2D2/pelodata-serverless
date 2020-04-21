@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -36,18 +35,30 @@ func login(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.
 	req := loginRequest{}
 	err := json.Unmarshal([]byte(request.Body), &req)
 	if err != nil {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "username and password are required in request body"
+		}`, http.StatusBadRequest)
+
 		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to parse request body: %s", err)
+			StatusCode: http.StatusBadRequest,
+			Body:       errBody,
+		}, nil
 	}
 
 	req.Username = strings.TrimSpace(req.Username)
 	req.Password = strings.TrimSpace(req.Password)
 
 	if req.Username == "" || req.Password == "" {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "username and password are required in request body"
+		}`, http.StatusBadRequest)
+
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
-		}, errors.New("username and password must be provided")
+			Body:       errBody,
+		}, nil
 	}
 
 	loginBytes, err := json.Marshal(req)
@@ -65,17 +76,24 @@ func login(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode > 399 {
-		return events.APIGatewayProxyResponse{
-			StatusCode: resp.StatusCode,
-		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
-	}
-
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("Unable to read response body: %s", err)
+	}
+
+	if resp.StatusCode > 399 {
+		if body != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: resp.StatusCode,
+				Body:       string(body),
+			}, nil
+		}
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: resp.StatusCode,
+		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
 	}
 
 	loginRes := &loginResponse{}

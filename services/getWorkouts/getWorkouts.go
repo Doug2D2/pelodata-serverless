@@ -71,27 +71,45 @@ func getWorkouts(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 	if isFavRideStr, ok := request.QueryStringParameters["is_favorite_ride"]; ok {
 		isFavRide, err := strconv.ParseBool(isFavRideStr)
 		if err != nil {
+			errBody := fmt.Sprintf(`{
+				"status": %d,
+				"message": "is_favorite_ride must be true or false"
+			}`, http.StatusBadRequest)
+
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("is_favorite_ride parameter must be true or false")
+				Body:       errBody,
+			}, nil
 		}
 		url = fmt.Sprintf("%sis_favorite_ride=%v&", url, isFavRide)
 	}
 	if hasWorkoutStr, ok := request.QueryStringParameters["has_workout"]; ok {
 		hasWorkout, err := strconv.ParseBool(hasWorkoutStr)
 		if err != nil {
+			errBody := fmt.Sprintf(`{
+				"status": %d,
+				"message": "has_workout must be true or false"
+			}`, http.StatusBadRequest)
+
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("has_workout parameter must be true or false")
+				Body:       errBody,
+			}, nil
 		}
 		url = fmt.Sprintf("%shas_workout=%v&", url, hasWorkout)
 	}
 	if durationStr, ok := request.QueryStringParameters["duration"]; ok {
 		duration, err := strconv.Atoi(durationStr)
 		if err != nil || duration < 1 {
+			errBody := fmt.Sprintf(`{
+				"status": %d,
+				"message": "duration must be a number greater than 0"
+			}`, http.StatusBadRequest)
+
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("duration parameter must be a number greater than 0")
+				Body:       errBody,
+			}, nil
 		}
 		url = fmt.Sprintf("%sduration=%d&", url, duration)
 	}
@@ -107,18 +125,30 @@ func getWorkouts(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 	if limitStr, ok := request.QueryStringParameters["limit"]; ok {
 		limit, err := strconv.Atoi(limitStr)
 		if err != nil || limit < 1 {
+			errBody := fmt.Sprintf(`{
+				"status": %d,
+				"message": "limit must be a number greater than 0"
+			}`, http.StatusBadRequest)
+
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("limit parameter must be a number greater than 0")
+				Body:       errBody,
+			}, nil
 		}
 		url = fmt.Sprintf("%slimit=%d&", url, limit)
 	}
 	if pageStr, ok := request.QueryStringParameters["page"]; ok {
 		page, err := strconv.Atoi(pageStr)
 		if err != nil || page < 0 {
+			errBody := fmt.Sprintf(`{
+				"status": %d,
+				"message": "page must be a number 0 or greater"
+			}`, http.StatusBadRequest)
+
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("page parameter must be a number 0 or greater")
+				Body:       errBody,
+			}, nil
 		}
 		url = fmt.Sprintf("%spage=%d&", url, page)
 	}
@@ -128,9 +158,15 @@ func getWorkouts(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 	if descStr, ok := request.QueryStringParameters["desc"]; ok {
 		desc, err := strconv.ParseBool(descStr)
 		if err != nil {
+			errBody := fmt.Sprintf(`{
+				"status": %d,
+				"message": "desc must be true or false"
+			}`, http.StatusBadRequest)
+
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusBadRequest,
-			}, fmt.Errorf("desc parameter must be true or false")
+				Body:       errBody,
+			}, nil
 		}
 		url = fmt.Sprintf("%sdesc=%v&", url, desc)
 	}
@@ -158,17 +194,24 @@ func getWorkouts(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode > 399 {
-		return events.APIGatewayProxyResponse{
-			StatusCode: resp.StatusCode,
-		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
-	}
-
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, fmt.Errorf("Unable to read response body: %s", err)
+	}
+
+	if resp.StatusCode > 399 {
+		if body != nil {
+			return events.APIGatewayProxyResponse{
+				StatusCode: resp.StatusCode,
+				Body:       string(body),
+			}, nil
+		}
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: resp.StatusCode,
+		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
 	}
 
 	getWorkoutsRes := &getWorkoutsResponse{}
