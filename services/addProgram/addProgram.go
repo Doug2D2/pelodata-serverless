@@ -37,12 +37,12 @@ type customProgram struct {
 }
 
 func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
-	// Get userid from cookie
-	cookie, ok := request.Headers["Cookie"]
+	// Get UserID header
+	userID, ok := request.Headers["UserID"]
 	if !ok {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "Must be logged in to create a program"
+			"message": "UserID header is required"
 		}`, http.StatusBadRequest)
 
 		return events.APIGatewayProxyResponse{
@@ -51,20 +51,18 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		}, nil
 	}
 
-	fmt.Printf("COOKIE: %s", cookie)
-
 	// Get db region and name from env
-	dbRegion, exists := os.LookupEnv("db_region")
+	tableRegion, exists := os.LookupEnv("table_region")
 	if !exists {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("db_region env var doesn't exist")
+		}, errors.New("table_region env var doesn't exist")
 	}
-	dbName, exists := os.LookupEnv("db_name")
+	tableName, exists := os.LookupEnv("table_name")
 	if !exists {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("db_name env var doesn't exist")
+		}, errors.New("table_name env var doesn't exist")
 	}
 
 	// Parse request body
@@ -82,7 +80,7 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		}, nil
 	}
 
-	id := uuid.New().String()
+	cp.ID = uuid.New().String()
 	cp.Name = strings.TrimSpace(cp.Name)
 	cp.Description = strings.TrimSpace(cp.Description)
 	classesData, err := json.Marshal(cp.Classes)
@@ -116,34 +114,77 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		}, nil
 	}
 
-	// TODO: If cp.Public is true, validate that cp.Name is unique for that user
-	// If its false, validate that cp.Name is unique for all public programs
-
 	sess := session.Must(session.NewSession())
 	config := &aws.Config{
-		Endpoint: aws.String(fmt.Sprintf("dynamodb.%s.amazonaws.com", dbRegion)),
-		Region:   aws.String(dbRegion),
+		Endpoint: aws.String(fmt.Sprintf("dynamodb.%s.amazonaws.com", tableRegion)),
+		Region:   aws.String(tableRegion),
 	}
 	db := dynamodb.New(sess, config)
 
-	// TODO: Add createdBy -- Peloton user ID
+	scanInput := &dynamodb.ScanInput{
+		TableName: aws.String(tableName),
+		ExpressionAttributeNames: map[string]*string{
+			"#N": aws.String("Name"),
+		},
+	}
+	if cp.Public {
+		// If cp.Public is true, the name must be unique for all public programs
+		scanInput.ExpressionAttributeNames["#P"] = aws.String("Public")
+		scanInput.FilterExpression = aws.String("#N = :name and #P = :public")
+		scanInput.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
+			":name":   {S: aws.String(cp.Name)},
+			":public": {BOOL: aws.Bool(true)},
+		}
+	} else {
+		// else, the name must be unique for the user's programs
+		scanInput.FilterExpression = aws.String("#N = :name and CreatedBy = :createdBy")
+		scanInput.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
+			":name":      {S: aws.String(cp.Name)},
+			":createdBy": {S: aws.String(userID)},
+		}
+	}
+	scanOutput, err := db.Scan(scanInput)
+	if err != nil {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "Unable to get existing programs: %s"
+		}`, http.StatusInternalServerError, err.Error())
 
-	inputItem := map[string]*dynamodb.AttributeValue{
-		"Id":              {S: aws.String(id)},
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       errBody,
+		}, nil
+	}
+
+	// If the Scan call returns any items, then that name can't be used
+	if len(scanOutput.Items) > 0 {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "A program with the name %s already exists"
+		}`, http.StatusBadRequest, cp.Name)
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       errBody,
+		}, nil
+	}
+
+	itemToPut := map[string]*dynamodb.AttributeValue{
+		"Id":              {S: aws.String(cp.ID)},
 		"Name":            {S: aws.String(cp.Name)},
 		"Description":     {S: aws.String(cp.Description)},
 		"Public":          {BOOL: aws.Bool(cp.Public)},
 		"EquipmentNeeded": {SS: aws.StringSlice(cp.EquipmentNeeded)},
 		"NumWeeks":        {N: aws.String(strconv.Itoa(cp.NumWeeks))},
 		"Classes":         {B: classesData},
-		// "CreatedBy":   {S: aws.String("")},
-		"CreatedDate": {S: aws.String(time.Now().Format(time.RFC3339))},
+		"CreatedBy":       {S: aws.String(userID)},
+		"CreatedDate":     {S: aws.String(time.Now().Format(time.RFC3339))},
 	}
-	input := &dynamodb.PutItemInput{
-		TableName: aws.String(dbName),
-		Item:      inputItem,
+	putInput := &dynamodb.PutItemInput{
+		TableName: aws.String(tableName),
+		Item:      itemToPut,
 	}
-	_, err = db.PutItem(input)
+	_, err = db.PutItem(putInput)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
@@ -156,7 +197,7 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		}, nil
 	}
 
-	reply, err := json.Marshal(inputItem)
+	reply, err := json.Marshal(cp)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
