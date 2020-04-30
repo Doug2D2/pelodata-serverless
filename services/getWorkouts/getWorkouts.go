@@ -32,6 +32,7 @@ import (
 //   super_genre_id - ID of music genre
 
 type workout struct {
+	ID              string  `json:"id"`
 	Title           string  `json:"title"`
 	Description     string  `json:"description"`
 	Difficulty      float32 `json:"difficulty_estimate"`

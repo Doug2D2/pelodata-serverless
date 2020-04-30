@@ -19,21 +19,28 @@ import (
 	"github.com/google/uuid"
 )
 
-type class struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+type workout struct {
+	ID              string  `json:"id"`
+	Title           string  `json:"title"`
+	Description     string  `json:"description"`
+	Difficulty      float32 `json:"difficulty_estimate"`
+	Duration        int     `json:"duration"`
+	ImageURL        string  `json:"image_url"`
+	InstructorID    string  `json:"instructor_id"`
+	InstructorName  string  `json:"instructor_name"`
+	OriginalAirTime int64   `json:"original_air_time"`
 }
 
 type customProgram struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	Description     string    `json:"description"`
-	Public          bool      `json:"public"`
-	EquipmentNeeded []string  `json:"equipmentNeeded"`
-	NumWeeks        int       `json:"numWeeks"`
-	Classes         [][]class `json:"classes"`
-	CreatedBy       string    `json:"createdBy"`
-	CreatedDate     string    `json:"createdDate"`
+	ID              string      `json:"id"`
+	Name            string      `json:"name"`
+	Description     string      `json:"description"`
+	Public          bool        `json:"public"`
+	EquipmentNeeded []string    `json:"equipmentNeeded"`
+	NumWeeks        int         `json:"numWeeks"`
+	Workouts        [][]workout `json:"workouts"`
+	CreatedBy       string      `json:"createdBy"`
+	CreatedDate     string      `json:"createdDate"`
 }
 
 func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
@@ -83,7 +90,7 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 	cp.ID = uuid.New().String()
 	cp.Name = strings.TrimSpace(cp.Name)
 	cp.Description = strings.TrimSpace(cp.Description)
-	classesData, err := json.Marshal(cp.Classes)
+	workoutsData, err := json.Marshal(cp.Workouts)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
@@ -106,6 +113,17 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "numWeeks must be a number greater than 0"
+		}`, http.StatusBadRequest)
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       errBody,
+		}, nil
+	}
+	if len(cp.Workouts) < 1 {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "workouts must not be empty"
 		}`, http.StatusBadRequest)
 
 		return events.APIGatewayProxyResponse{
@@ -176,7 +194,7 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		"Public":          {BOOL: aws.Bool(cp.Public)},
 		"EquipmentNeeded": {SS: aws.StringSlice(cp.EquipmentNeeded)},
 		"NumWeeks":        {N: aws.String(strconv.Itoa(cp.NumWeeks))},
-		"Classes":         {B: classesData},
+		"Workouts":        {B: workoutsData},
 		"CreatedBy":       {S: aws.String(userID)},
 		"CreatedDate":     {S: aws.String(time.Now().Format(time.RFC3339))},
 	}
