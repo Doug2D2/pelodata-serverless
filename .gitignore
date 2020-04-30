@@ -1,6 +1,6 @@
 services
 
-!services/*/*.go
+!services/**.go
 
 # services/getUserInfo/getUserInfo
 # services/getUserInfo/getUserInfo.zip
