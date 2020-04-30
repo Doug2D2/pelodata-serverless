@@ -1,10 +1,16 @@
-services/getUserInfo/getUserInfo
-services/getUserInfo/getUserInfo.zip
-services/login/login
-services/login/login.zip
-services/getWorkouts/getWorkouts
-services/getWorkouts/getWorkouts.zip
-services/getFilters/getFilters
-services/getFilters/getFilters.zip
-services/getCategories/getCategories
-services/getCategories/getCategories.zip
+services
+
+!services/*/*.go
+
+# services/getUserInfo/getUserInfo
+# services/getUserInfo/getUserInfo.zip
+# services/login/login
+# services/login/login.zip
+# services/getWorkouts/getWorkouts
+# services/getWorkouts/getWorkouts.zip
+# services/getFilters/getFilters
+# services/getFilters/getFilters.zip
+# services/getCategories/getCategories
+# services/getCategories/getCategories.zip
+# services/addProgram/addProgram
+# services/addProgram/addProgram.zip
