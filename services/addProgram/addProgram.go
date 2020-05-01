@@ -46,7 +46,8 @@ type customProgram struct {
 func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
 	// Get UserID header
 	userID, ok := request.Headers["UserID"]
-	if !ok {
+	userID = strings.TrimSpace(userID)
+	if !ok || userID == "" {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "UserID header is required"

@@ -34,22 +34,9 @@ func login(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.
 
 	req := loginRequest{}
 	err := json.Unmarshal([]byte(request.Body), &req)
-	if err != nil {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "username and password are required in request body"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-
 	req.Username = strings.TrimSpace(req.Username)
 	req.Password = strings.TrimSpace(req.Password)
-
-	if req.Username == "" || req.Password == "" {
+	if err != nil || req.Username == "" || req.Password == "" {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "username and password are required in request body"

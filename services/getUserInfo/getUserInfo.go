@@ -35,20 +35,8 @@ const basePelotonURL = "https://api.onepeloton.com"
 // getUser returns the user's Peloton user id based on their username or email and password
 func getUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
 	userID, ok := request.PathParameters["userId"]
-	if !ok {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "Path parameter user_id is required: /getUserInfo/{user_id}"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-
 	userID = strings.TrimSpace(userID)
-	if userID == "" {
+	if !ok || userID == "" {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "Path parameter user_id is required: /getUserInfo/{user_id}"
