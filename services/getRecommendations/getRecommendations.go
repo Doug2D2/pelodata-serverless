@@ -89,8 +89,15 @@ func getItemByID(db *dynamodb.DynamoDB, tableName, userID, recommendationID stri
 		}, nil
 	}
 
+	// If either value is nil, won't be ale to dereference in following if statement
+	if getItemOutput.Item["RecommendedBy"].S == nil || getItemOutput.Item["RecommendedFor"].S == nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, errors.New("Invalid nil pointer on RecommendedBy or RecommendedFor")
+	}
+
 	// recommendedBy or recommendedFor must be the current user
-	if getItemOutput.Item["RecommendedBy"].S != &userID && getItemOutput.Item["RecommendedFor"].S != &userID {
+	if *getItemOutput.Item["RecommendedBy"].S != userID && *getItemOutput.Item["RecommendedFor"].S != userID {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "Unauthorized to view this recommendation"
@@ -123,14 +130,39 @@ func getItemByID(db *dynamodb.DynamoDB, tableName, userID, recommendationID stri
 	}, nil
 }
 
-func getAllItems(db *dynamodb.DynamoDB, tableName, userID string) (events.APIGatewayProxyResponse, error) {
+func getAllItems(db *dynamodb.DynamoDB, tableName, userID, recType string) (events.APIGatewayProxyResponse, error) {
 	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(tableName),
-		FilterExpression: aws.String("RecommendedFor = :recommendedFor"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":recommendedFor": {S: aws.String(userID)},
-		},
+		TableName: aws.String(tableName),
 	}
+	switch recType {
+	case "forme":
+		scanInput.FilterExpression = aws.String("RecommendedFor = :userID")
+		scanInput.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
+			":userID": {S: aws.String(userID)},
+		}
+	case "byme":
+		scanInput.FilterExpression = aws.String("RecommendedBy = :userID")
+		scanInput.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
+			":userID": {S: aws.String(userID)},
+		}
+	case "all":
+		scanInput.FilterExpression = aws.String("RecommendedFor = :userID or RecommendedBy = :userID")
+		scanInput.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
+			":userID": {S: aws.String(userID)},
+		}
+	default:
+		// Invalid value for type query parameter
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "type must be forMe, byMe, or all"
+		}`, http.StatusBadRequest)
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       errBody,
+		}, nil
+	}
+
 	scanOutput, err := db.Scan(scanInput)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
@@ -212,8 +244,17 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 		}, errors.New("table_name env var doesn't exist")
 	}
 
+	// Get path parameter - only used if getting a recommendation by id
 	recommendationID, _ := request.PathParameters["recommendationId"]
 	recommendationID = strings.TrimSpace(recommendationID)
+
+	// Check for query parameters
+	// type - must be either forMe, byMe, or all. Determines the type of recommendations returned
+	recType, _ := request.QueryStringParameters["type"]
+	recType = strings.ToLower(strings.TrimSpace(recType))
+	if recType == "" {
+		recType = "forme"
+	}
 
 	sess := session.Must(session.NewSession())
 	config := &aws.Config{
@@ -226,7 +267,7 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 		return getItemByID(db, tableName, userID, recommendationID)
 	}
 
-	return getAllItems(db, tableName, userID)
+	return getAllItems(db, tableName, userID, recType)
 }
 
 func main() {

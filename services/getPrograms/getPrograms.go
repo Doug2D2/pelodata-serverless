@@ -115,8 +115,15 @@ func getItemByID(db *dynamodb.DynamoDB, tableName, userID, programID string) (ev
 		}, nil
 	}
 
+	// If either value is nil, won't be ale to dereference in following if statement
+	if getItemOutput.Item["Public"].BOOL == nil || getItemOutput.Item["CreatedBy"].S == nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+		}, errors.New("Invalid nil pointer on Public or CreatedBy")
+	}
+
 	// If program is not public or created by the user then they don't have access
-	if getItemOutput.Item["Public"].BOOL == aws.Bool(false) && getItemOutput.Item["CreatedBy"].S != &userID {
+	if *getItemOutput.Item["Public"].BOOL == false && *getItemOutput.Item["CreatedBy"].S != userID {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "Unauthorized to view this program"

@@ -92,9 +92,22 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 
 	// Validation on request body
 	if r.RecommendedFor == "" {
+		// Must be recommended to someone
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "recommendedFor is required in request body"
+		}`, http.StatusBadRequest)
+
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       errBody,
+		}, nil
+	}
+	if r.RecommendedFor == r.RecommendedBy {
+		// User shouldn't be able to recommend to their self
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "Unable to recommend a class to yourself"
 		}`, http.StatusBadRequest)
 
 		return events.APIGatewayProxyResponse{
