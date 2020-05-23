@@ -19,7 +19,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type challenge struct {
+type customChallenge struct {
 	ID              string   `json:"id"`
 	CreatedBy       string   `json:"createdBy"`
 	Name            string   `json:"name"`
@@ -64,7 +64,7 @@ func addChallenge(ctx context.Context, request events.APIGatewayV2HTTPRequest) (
 	}
 
 	// Parse request body
-	c := challenge{}
+	c := customChallenge{}
 	err := json.Unmarshal([]byte(request.Body), &c)
 	if err != nil {
 		errBody := fmt.Sprintf(`{

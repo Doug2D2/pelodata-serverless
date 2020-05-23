@@ -17,83 +17,84 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-type workout struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Difficulty      float32 `json:"difficulty_estimate"`
-	Duration        int     `json:"duration"`
-	ImageURL        string  `json:"image_url"`
-	InstructorID    string  `json:"instructor_id"`
-	InstructorName  string  `json:"instructor_name"`
-	OriginalAirTime int64   `json:"original_air_time"`
+type customChallenge struct {
+	ID              string   `json:"id"`
+	CreatedBy       string   `json:"createdBy"`
+	Name            string   `json:"name"`
+	Description     string   `json:"description"`
+	Public          bool     `json:"public"`
+	EquipmentNeeded []string `json:"equipmentNeeded"`
+	Difficulty      float32  `json:"difficulty"`
+	StartDate       string   `json:"startDate"`
+	EndDate         string   `json:"endDate"`
+	NumWorkoutGoal  int      `json:"numWorkoutGoal"`
+	WorkoutTypes    []string `json:"workoutTypes"`
 }
 
-type customProgram struct {
-	ID              string      `json:"id"`
-	Name            string      `json:"name"`
-	Description     string      `json:"description"`
-	Public          bool        `json:"public"`
-	EquipmentNeeded []string    `json:"equipmentNeeded"`
-	NumWeeks        int         `json:"numWeeks"`
-	Workouts        [][]workout `json:"workouts"`
-	CreatedBy       string      `json:"createdBy"`
-	CreatedDate     string      `json:"createdDate"`
-}
-
-func formatOutput(item map[string]*dynamodb.AttributeValue) (customProgram, error) {
-	program := customProgram{}
+func formatOutput(item map[string]*dynamodb.AttributeValue) (customChallenge, error) {
+	challenge := customChallenge{}
 	var err error
 
 	if item["Id"].S != nil {
-		program.ID = *item["Id"].S
-	}
-	if item["Name"].S != nil {
-		program.Name = *item["Name"].S
-	}
-	if item["Description"].S != nil {
-		program.Description = *item["Description"].S
-	}
-	if item["Public"].BOOL != nil {
-		program.Public = *item["Public"].BOOL
+		challenge.ID = *item["Id"].S
 	}
 	if item["CreatedBy"].S != nil {
-		program.CreatedBy = *item["CreatedBy"].S
+		challenge.CreatedBy = *item["CreatedBy"].S
 	}
-	if item["CreatedDate"].S != nil {
-		program.CreatedDate = *item["CreatedDate"].S
+	if item["Name"].S != nil {
+		challenge.Name = *item["Name"].S
+	}
+	if item["Description"].S != nil {
+		challenge.Description = *item["Description"].S
+	}
+	if item["Public"].BOOL != nil {
+		challenge.Public = *item["Public"].BOOL
 	}
 	if item["EquipmentNeeded"].SS != nil {
 		for _, en := range item["EquipmentNeeded"].SS {
-			program.EquipmentNeeded = append(program.EquipmentNeeded, *en)
+			challenge.EquipmentNeeded = append(challenge.EquipmentNeeded, *en)
 		}
 	}
-	if item["NumWeeks"].N != nil {
-		program.NumWeeks, err = strconv.Atoi(*item["NumWeeks"].N)
+	if item["Difficulty"].N != nil {
+		diff, err := strconv.ParseFloat(*item["Difficulty"].N, 32)
 		if err != nil {
-			return customProgram{}, fmt.Errorf("Unable to convert NumWeeks to int: %s", err)
+			return customChallenge{}, fmt.Errorf("Unable to convert Difficulty to float: %s", err)
+		}
+		challenge.Difficulty = float32(diff)
+	}
+	if item["StartDate"].S != nil {
+		challenge.StartDate = *item["StartDate"].S
+	}
+	if item["EndDate"].S != nil {
+		challenge.EndDate = *item["EndDate"].S
+	}
+	if item["NumWorkoutGoal"].N != nil {
+		challenge.NumWorkoutGoal, err = strconv.Atoi(*item["NumWorkoutGoal"].N)
+		if err != nil {
+			return customChallenge{}, fmt.Errorf("Unable to convert NumWorkoutGoal to int: %s", err)
 		}
 	}
-	err = json.Unmarshal(item["Workouts"].B, &program.Workouts)
-	if err != nil {
-		return customProgram{}, fmt.Errorf("Unable to unmarshal response: %s", err)
+	if item["WorkoutTypes"].SS != nil {
+		for _, wt := range item["WorkoutTypes"].SS {
+			challenge.WorkoutTypes = append(challenge.WorkoutTypes, *wt)
+		}
 	}
 
-	return program, nil
+	return challenge, nil
 }
 
-func getProgramByID(db *dynamodb.DynamoDB, tableName, userID, programID string) (events.APIGatewayProxyResponse, error) {
+func getChallengeByID(db *dynamodb.DynamoDB, tableName, userID, challengeID string) (events.APIGatewayProxyResponse, error) {
 	getItemInput := &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
-			"Id": {S: aws.String(programID)},
+			"Id": {S: aws.String(challengeID)},
 		},
 	}
 	getItemOutput, err := db.GetItem(getItemInput)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "Unable to get program: %s"
+			"message": "Unable to get challenge: %s"
 		}`, http.StatusInternalServerError, err.Error())
 
 		return events.APIGatewayProxyResponse{
@@ -106,8 +107,8 @@ func getProgramByID(db *dynamodb.DynamoDB, tableName, userID, programID string) 
 	if len(getItemOutput.Item) == 0 {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "Unable to find program %s"
-		}`, http.StatusBadRequest, programID)
+			"message": "Unable to find challenge %s"
+		}`, http.StatusBadRequest, challengeID)
 
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
@@ -126,7 +127,7 @@ func getProgramByID(db *dynamodb.DynamoDB, tableName, userID, programID string) 
 	if *getItemOutput.Item["Public"].BOOL == false && *getItemOutput.Item["CreatedBy"].S != userID {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "Unauthorized to view this program"
+			"message": "Unauthorized to view this challenge"
 		}`, http.StatusUnauthorized)
 
 		return events.APIGatewayProxyResponse{
@@ -136,14 +137,14 @@ func getProgramByID(db *dynamodb.DynamoDB, tableName, userID, programID string) 
 	}
 
 	// Format getItemOutput to customProgram
-	program, err := formatOutput(getItemOutput.Item)
+	challenge, err := formatOutput(getItemOutput.Item)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
 		}, err
 	}
 
-	reply, err := json.Marshal(program)
+	reply, err := json.Marshal(challenge)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
@@ -156,7 +157,7 @@ func getProgramByID(db *dynamodb.DynamoDB, tableName, userID, programID string) 
 	}, nil
 }
 
-func getAllPrograms(db *dynamodb.DynamoDB, tableName, userID string) (events.APIGatewayProxyResponse, error) {
+func getAllChallenges(db *dynamodb.DynamoDB, tableName, userID string) (events.APIGatewayProxyResponse, error) {
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
 		ExpressionAttributeNames: map[string]*string{
@@ -172,7 +173,7 @@ func getAllPrograms(db *dynamodb.DynamoDB, tableName, userID string) (events.API
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "Unable to get existing programs: %s"
+			"message": "Unable to get existing challenges: %s"
 		}`, http.StatusInternalServerError, err.Error())
 
 		return events.APIGatewayProxyResponse{
@@ -190,18 +191,18 @@ func getAllPrograms(db *dynamodb.DynamoDB, tableName, userID string) (events.API
 	}
 
 	// Format scanOutput to []customProgram
-	programs := []customProgram{}
+	challenges := []customChallenge{}
 	for _, i := range scanOutput.Items {
-		p, err := formatOutput(i)
+		c, err := formatOutput(i)
 		if err != nil {
 			return events.APIGatewayProxyResponse{
 				StatusCode: http.StatusInternalServerError,
 			}, err
 		}
-		programs = append(programs, p)
+		challenges = append(challenges, c)
 	}
 
-	reply, err := json.Marshal(programs)
+	reply, err := json.Marshal(challenges)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
@@ -214,7 +215,7 @@ func getAllPrograms(db *dynamodb.DynamoDB, tableName, userID string) (events.API
 	}, nil
 }
 
-func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
+func getChallenges(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
 	// Get UserID header
 	userID, ok := request.Headers["UserID"]
 	userID = strings.TrimSpace(userID)
@@ -244,8 +245,8 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 		}, errors.New("table_name env var doesn't exist")
 	}
 
-	programID, _ := request.PathParameters["programId"]
-	programID = strings.TrimSpace(programID)
+	challengeID, _ := request.PathParameters["challengeId"]
+	challengeID = strings.TrimSpace(challengeID)
 
 	sess := session.Must(session.NewSession())
 	config := &aws.Config{
@@ -254,13 +255,13 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 	}
 	db := dynamodb.New(sess, config)
 
-	if len(programID) > 0 {
-		return getProgramByID(db, tableName, userID, programID)
+	if len(challengeID) > 0 {
+		return getChallengeByID(db, tableName, userID, challengeID)
 	}
 
-	return getAllPrograms(db, tableName, userID)
+	return getAllChallenges(db, tableName, userID)
 }
 
 func main() {
-	lambda.Start(getPrograms)
+	lambda.Start(getChallenges)
 }

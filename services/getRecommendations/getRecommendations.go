@@ -56,7 +56,7 @@ func formatOutput(item map[string]*dynamodb.AttributeValue) (recommendation, err
 	return rec, nil
 }
 
-func getItemByID(db *dynamodb.DynamoDB, tableName, userID, recommendationID string) (events.APIGatewayProxyResponse, error) {
+func getRecommendationByID(db *dynamodb.DynamoDB, tableName, userID, recommendationID string) (events.APIGatewayProxyResponse, error) {
 	getItemInput := &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -130,7 +130,7 @@ func getItemByID(db *dynamodb.DynamoDB, tableName, userID, recommendationID stri
 	}, nil
 }
 
-func getAllItems(db *dynamodb.DynamoDB, tableName, userID, recType string) (events.APIGatewayProxyResponse, error) {
+func getAllRecommendations(db *dynamodb.DynamoDB, tableName, userID, recType string) (events.APIGatewayProxyResponse, error) {
 	scanInput := &dynamodb.ScanInput{
 		TableName: aws.String(tableName),
 	}
@@ -259,10 +259,10 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 	db := dynamodb.New(sess, config)
 
 	if len(recommendationID) > 0 {
-		return getItemByID(db, tableName, userID, recommendationID)
+		return getRecommendationByID(db, tableName, userID, recommendationID)
 	}
 
-	return getAllItems(db, tableName, userID, recType)
+	return getAllRecommendations(db, tableName, userID, recType)
 }
 
 func main() {
