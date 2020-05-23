@@ -31,7 +31,7 @@ type workout struct {
 
 type recommendation struct {
 	ID             string  `json:"id"`
-	RecommendedBy  string  `json:"recommendedBy"`
+	CreatedBy      string  `json:"createdBy"`
 	RecommendedFor string  `json:"recommendedFor"`
 	Workout        workout `json:"workout"`
 }
@@ -82,7 +82,7 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 	}
 
 	r.ID = uuid.New().String()
-	r.RecommendedBy = userID
+	r.CreatedBy = userID
 	workoutData, err := json.Marshal(r.Workout)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
@@ -103,7 +103,7 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 			Body:       errBody,
 		}, nil
 	}
-	if r.RecommendedFor == r.RecommendedBy {
+	if r.RecommendedFor == r.CreatedBy {
 		// User shouldn't be able to recommend to their self
 		errBody := fmt.Sprintf(`{
 			"status": %d,
@@ -125,9 +125,9 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 
 	scanInput := &dynamodb.ScanInput{
 		TableName:        aws.String(tableName),
-		FilterExpression: aws.String("RecommendedBy = :recommendedBy and RecommendedFor = :recommendedFor and Workout = :workout"),
+		FilterExpression: aws.String("CreatedBy = :createdBy and RecommendedFor = :recommendedFor and Workout = :workout"),
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":recommendedBy":  {S: aws.String(r.RecommendedBy)},
+			":createdBy":      {S: aws.String(r.CreatedBy)},
 			":recommendedFor": {S: aws.String(r.RecommendedFor)},
 			":workout":        {B: workoutData},
 		},
@@ -160,7 +160,7 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 
 	itemToPut := map[string]*dynamodb.AttributeValue{
 		"Id":             {S: aws.String(r.ID)},
-		"RecommendedBy":  {S: aws.String(r.RecommendedBy)},
+		"CreatedBy":      {S: aws.String(r.CreatedBy)},
 		"RecommendedFor": {S: aws.String(r.RecommendedFor)},
 		"Workout":        {B: workoutData},
 	}

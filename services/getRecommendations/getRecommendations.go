@@ -30,7 +30,7 @@ type workout struct {
 
 type recommendation struct {
 	ID             string  `json:"id"`
-	RecommendedBy  string  `json:"recommendedBy"`
+	CreatedBy      string  `json:"createdBy"`
 	RecommendedFor string  `json:"recommendedFor"`
 	Workout        workout `json:"workout"`
 }
@@ -42,8 +42,8 @@ func formatOutput(item map[string]*dynamodb.AttributeValue) (recommendation, err
 	if item["Id"].S != nil {
 		rec.ID = *item["Id"].S
 	}
-	if item["RecommendedBy"].S != nil {
-		rec.RecommendedBy = *item["RecommendedBy"].S
+	if item["CreatedBy"].S != nil {
+		rec.CreatedBy = *item["CreatedBy"].S
 	}
 	if item["RecommendedFor"].S != nil {
 		rec.RecommendedFor = *item["RecommendedFor"].S
@@ -90,14 +90,14 @@ func getRecommendationByID(db *dynamodb.DynamoDB, tableName, userID, recommendat
 	}
 
 	// If either value is nil, won't be ale to dereference in following if statement
-	if getItemOutput.Item["RecommendedBy"].S == nil || getItemOutput.Item["RecommendedFor"].S == nil {
+	if getItemOutput.Item["CreatedBy"].S == nil || getItemOutput.Item["RecommendedFor"].S == nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("Invalid nil pointer on RecommendedBy or RecommendedFor")
+		}, errors.New("Invalid nil pointer on CreatedBy or RecommendedFor")
 	}
 
-	// recommendedBy or recommendedFor must be the current user
-	if *getItemOutput.Item["RecommendedBy"].S != userID && *getItemOutput.Item["RecommendedFor"].S != userID {
+	// createdBy or recommendedFor must be the current user
+	if *getItemOutput.Item["CreatedBy"].S != userID && *getItemOutput.Item["RecommendedFor"].S != userID {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
 			"message": "Unauthorized to view this recommendation"
@@ -141,12 +141,12 @@ func getAllRecommendations(db *dynamodb.DynamoDB, tableName, userID, recType str
 			":userID": {S: aws.String(userID)},
 		}
 	case "byme":
-		scanInput.FilterExpression = aws.String("RecommendedBy = :userID")
+		scanInput.FilterExpression = aws.String("CreatedBy = :userID")
 		scanInput.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
 			":userID": {S: aws.String(userID)},
 		}
 	case "all":
-		scanInput.FilterExpression = aws.String("RecommendedFor = :userID or RecommendedBy = :userID")
+		scanInput.FilterExpression = aws.String("RecommendedFor = :userID or CreatedBy = :userID")
 		scanInput.ExpressionAttributeValues = map[string]*dynamodb.AttributeValue{
 			":userID": {S: aws.String(userID)},
 		}
