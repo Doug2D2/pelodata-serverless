@@ -76,7 +76,7 @@ func getItemByID(db *dynamodb.DynamoDB, tableName, userID, recommendationID stri
 		}, nil
 	}
 
-	// Check if no results are returned
+	// Check if item is not found
 	if len(getItemOutput.Item) == 0 {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
@@ -178,14 +178,9 @@ func getAllItems(db *dynamodb.DynamoDB, tableName, userID, recType string) (even
 
 	// Check if no results are returned
 	if len(scanOutput.Items) == 0 {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "Unable to find any recommendations"
-		}`, http.StatusBadRequest)
-
 		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
+			StatusCode: http.StatusOK,
+			Body:       "[]",
 		}, nil
 	}
 

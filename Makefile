@@ -1,5 +1,4 @@
 function:
-	echo $(name)
 	GOOS=linux GOARCH=amd64 go build -o $(name) services/$(name)/$(name).go
 	zip $(name).zip $(name)
 	mkdir -p services/$(name)/output
