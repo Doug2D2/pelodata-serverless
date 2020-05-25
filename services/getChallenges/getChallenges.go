@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -231,18 +231,11 @@ func getChallenges(ctx context.Context, request events.APIGatewayV2HTTPRequest) 
 		}, nil
 	}
 
-	// Get db region and name from env
-	tableRegion, exists := os.LookupEnv("table_region")
-	if !exists {
+	tableRegion, tableName, err := shared.GetDBInfo()
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_region env var doesn't exist")
-	}
-	tableName, exists := os.LookupEnv("table_name")
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_name env var doesn't exist")
+		}, err
 	}
 
 	challengeID, _ := request.PathParameters["challengeId"]

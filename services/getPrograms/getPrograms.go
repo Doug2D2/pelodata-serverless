@@ -6,10 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -17,28 +17,16 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-type workout struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Difficulty      float32 `json:"difficulty_estimate"`
-	Duration        int     `json:"duration"`
-	ImageURL        string  `json:"image_url"`
-	InstructorID    string  `json:"instructor_id"`
-	InstructorName  string  `json:"instructor_name"`
-	OriginalAirTime int64   `json:"original_air_time"`
-}
-
 type customProgram struct {
-	ID              string      `json:"id"`
-	Name            string      `json:"name"`
-	Description     string      `json:"description"`
-	Public          bool        `json:"public"`
-	EquipmentNeeded []string    `json:"equipmentNeeded"`
-	NumWeeks        int         `json:"numWeeks"`
-	Workouts        [][]workout `json:"workouts"`
-	CreatedBy       string      `json:"createdBy"`
-	CreatedDate     string      `json:"createdDate"`
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Description     string             `json:"description"`
+	Public          bool               `json:"public"`
+	EquipmentNeeded []string           `json:"equipmentNeeded"`
+	NumWeeks        int                `json:"numWeeks"`
+	Workouts        [][]shared.Workout `json:"workouts"`
+	CreatedBy       string             `json:"createdBy"`
+	CreatedDate     string             `json:"createdDate"`
 }
 
 func formatOutput(item map[string]*dynamodb.AttributeValue) (customProgram, error) {
@@ -230,18 +218,11 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 		}, nil
 	}
 
-	// Get db region and name from env
-	tableRegion, exists := os.LookupEnv("table_region")
-	if !exists {
+	tableRegion, tableName, err := shared.GetDBInfo()
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_region env var doesn't exist")
-	}
-	tableName, exists := os.LookupEnv("table_name")
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_name env var doesn't exist")
+		}, err
 	}
 
 	programID, _ := request.PathParameters["programId"]

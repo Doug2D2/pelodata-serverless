@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -19,28 +19,30 @@ import (
 	"github.com/google/uuid"
 )
 
-type workout struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Difficulty      float32 `json:"difficulty_estimate"`
-	Duration        int     `json:"duration"`
-	ImageURL        string  `json:"image_url"`
-	InstructorID    string  `json:"instructor_id"`
-	InstructorName  string  `json:"instructor_name"`
-	OriginalAirTime int64   `json:"original_air_time"`
+type customProgram struct {
+	ID              string             `json:"id"`
+	Name            string             `json:"name"`
+	Description     string             `json:"description"`
+	Public          bool               `json:"public"`
+	EquipmentNeeded []string           `json:"equipmentNeeded"`
+	NumWeeks        int                `json:"numWeeks"`
+	Workouts        [][]shared.Workout `json:"workouts"`
+	CreatedBy       string             `json:"createdBy"`
+	CreatedDate     string             `json:"createdDate"`
 }
 
-type customProgram struct {
-	ID              string      `json:"id"`
-	Name            string      `json:"name"`
-	Description     string      `json:"description"`
-	Public          bool        `json:"public"`
-	EquipmentNeeded []string    `json:"equipmentNeeded"`
-	NumWeeks        int         `json:"numWeeks"`
-	Workouts        [][]workout `json:"workouts"`
-	CreatedBy       string      `json:"createdBy"`
-	CreatedDate     string      `json:"createdDate"`
+func bodyValidation(cp customProgram) error {
+	if cp.Name == "" {
+		return errors.New("name is required in request body")
+	}
+	if cp.NumWeeks < 1 {
+		return errors.New("numWeeks must be a number greater than 0")
+	}
+	if len(cp.Workouts) < 1 {
+		return errors.New("workouts must not be empty")
+	}
+
+	return nil
 }
 
 func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
@@ -59,23 +61,16 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		}, nil
 	}
 
-	// Get db region and name from env
-	tableRegion, exists := os.LookupEnv("table_region")
-	if !exists {
+	tableRegion, tableName, err := shared.GetDBInfo()
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_region env var doesn't exist")
-	}
-	tableName, exists := os.LookupEnv("table_name")
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_name env var doesn't exist")
+		}, err
 	}
 
 	// Parse request body
 	cp := customProgram{}
-	err := json.Unmarshal([]byte(request.Body), &cp)
+	err = json.Unmarshal([]byte(request.Body), &cp)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
@@ -98,34 +93,12 @@ func addProgram(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		}, fmt.Errorf("Unable to marshal classes: %s", err)
 	}
 
-	// Validation on request body
-	if cp.Name == "" {
+	err = bodyValidation(cp)
+	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "name is required in request body"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if cp.NumWeeks < 1 {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "numWeeks must be a number greater than 0"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if len(cp.Workouts) < 1 {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "workouts must not be empty"
-		}`, http.StatusBadRequest)
+			"message": "%s"
+		}`, http.StatusBadRequest, err.Error())
 
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,

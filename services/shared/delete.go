@@ -2,10 +2,8 @@ package shared
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -16,6 +14,7 @@ import (
 
 var validPathParams = []string{"challengeId", "programId", "recommendationId"}
 
+// DeleteByID deletes an item from a Dynamo table by Id
 func DeleteByID(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
 	// Get UserID header
 	userID, ok := request.Headers["UserID"]
@@ -32,22 +31,12 @@ func DeleteByID(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		}, nil
 	}
 
-	// Get db region and name from env
-	tableRegion, exists := os.LookupEnv("table_region")
-	if !exists {
+	tableRegion, tableName, err := GetDBInfo()
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_region env var doesn't exist")
+		}, err
 	}
-	tableName, exists := os.LookupEnv("table_name")
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_name env var doesn't exist")
-	}
-
-	fmt.Printf("table region: %s\n", tableRegion)
-	fmt.Printf("table name: %s\n", tableName)
 
 	dataType := ""
 	id := ""

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,23 +16,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
-type workout struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Difficulty      float32 `json:"difficulty_estimate"`
-	Duration        int     `json:"duration"`
-	ImageURL        string  `json:"image_url"`
-	InstructorID    string  `json:"instructor_id"`
-	InstructorName  string  `json:"instructor_name"`
-	OriginalAirTime int64   `json:"original_air_time"`
-}
-
 type recommendation struct {
-	ID             string  `json:"id"`
-	CreatedBy      string  `json:"createdBy"`
-	RecommendedFor string  `json:"recommendedFor"`
-	Workout        workout `json:"workout"`
+	ID             string         `json:"id"`
+	CreatedBy      string         `json:"createdBy"`
+	RecommendedFor string         `json:"recommendedFor"`
+	Workout        shared.Workout `json:"workout"`
 }
 
 func formatOutput(item map[string]*dynamodb.AttributeValue) (recommendation, error) {
@@ -109,7 +97,7 @@ func getRecommendationByID(db *dynamodb.DynamoDB, tableName, userID, recommendat
 		}, nil
 	}
 
-	// Format getItemOutput to customProgram
+	// Format getItemOutput to recommendation
 	recommendation, err := formatOutput(getItemOutput.Item)
 	if err != nil {
 		return events.APIGatewayProxyResponse{
@@ -184,7 +172,7 @@ func getAllRecommendations(db *dynamodb.DynamoDB, tableName, userID, recType str
 		}, nil
 	}
 
-	// Format scanOutput to []customProgram
+	// Format scanOutput to []recommendation
 	recs := []recommendation{}
 	for _, i := range scanOutput.Items {
 		r, err := formatOutput(i)
@@ -209,7 +197,7 @@ func getAllRecommendations(db *dynamodb.DynamoDB, tableName, userID, recType str
 	}, nil
 }
 
-func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
+func getRecommendations(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
 	// Get UserID header
 	userID, ok := request.Headers["UserID"]
 	userID = strings.TrimSpace(userID)
@@ -225,18 +213,11 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 		}, nil
 	}
 
-	// Get db region and name from env
-	tableRegion, exists := os.LookupEnv("table_region")
-	if !exists {
+	tableRegion, tableName, err := shared.GetDBInfo()
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_region env var doesn't exist")
-	}
-	tableName, exists := os.LookupEnv("table_name")
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_name env var doesn't exist")
+		}, err
 	}
 
 	// Get path parameter - only used if getting a recommendation by id
@@ -266,5 +247,5 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 }
 
 func main() {
-	lambda.Start(getPrograms)
+	lambda.Start(getRecommendations)
 }

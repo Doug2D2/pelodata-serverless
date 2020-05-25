@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -17,23 +17,24 @@ import (
 	"github.com/google/uuid"
 )
 
-type workout struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Difficulty      float32 `json:"difficulty_estimate"`
-	Duration        int     `json:"duration"`
-	ImageURL        string  `json:"image_url"`
-	InstructorID    string  `json:"instructor_id"`
-	InstructorName  string  `json:"instructor_name"`
-	OriginalAirTime int64   `json:"original_air_time"`
+type recommendation struct {
+	ID             string         `json:"id"`
+	CreatedBy      string         `json:"createdBy"`
+	RecommendedFor string         `json:"recommendedFor"`
+	Workout        shared.Workout `json:"workout"`
 }
 
-type recommendation struct {
-	ID             string  `json:"id"`
-	CreatedBy      string  `json:"createdBy"`
-	RecommendedFor string  `json:"recommendedFor"`
-	Workout        workout `json:"workout"`
+func bodyValidation(r recommendation) error {
+	if r.RecommendedFor == "" {
+		// Must be recommended to someone
+		return errors.New("recommendedFor is required in request body")
+	}
+	if r.RecommendedFor == r.CreatedBy {
+		// User shouldn't be able to recommend to their self
+		return errors.New("Unable to recommend a class to yourself")
+	}
+
+	return nil
 }
 
 func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
@@ -52,23 +53,16 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		}, nil
 	}
 
-	// Get db region and name from env
-	tableRegion, exists := os.LookupEnv("table_region")
-	if !exists {
+	tableRegion, tableName, err := shared.GetDBInfo()
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_region env var doesn't exist")
-	}
-	tableName, exists := os.LookupEnv("table_name")
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_name env var doesn't exist")
+		}, err
 	}
 
 	// Parse request body
 	r := recommendation{}
-	err := json.Unmarshal([]byte(request.Body), &r)
+	err = json.Unmarshal([]byte(request.Body), &r)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
@@ -90,25 +84,12 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		}, fmt.Errorf("Unable to marshal classes: %s", err)
 	}
 
-	// Validation on request body
-	if r.RecommendedFor == "" {
-		// Must be recommended to someone
+	err = bodyValidation(r)
+	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "recommendedFor is required in request body"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if r.RecommendedFor == r.CreatedBy {
-		// User shouldn't be able to recommend to their self
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "Unable to recommend a class to yourself"
-		}`, http.StatusBadRequest)
+			"message": "%s"
+		}`, http.StatusBadRequest, err.Error())
 
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,

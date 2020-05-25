@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
@@ -31,30 +32,18 @@ import (
 //   instructor_id - ID of instructor.
 //   super_genre_id - ID of music genre
 
-type workout struct {
-	ID              string  `json:"id"`
-	Title           string  `json:"title"`
-	Description     string  `json:"description"`
-	Difficulty      float32 `json:"difficulty_estimate"`
-	Duration        int     `json:"duration"`
-	ImageURL        string  `json:"image_url"`
-	InstructorID    string  `json:"instructor_id"`
-	InstructorName  string  `json:"instructor_name"`
-	OriginalAirTime int64   `json:"original_air_time"`
-}
-
 type instructor struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
 type getWorkoutsResponse struct {
-	Data           []workout    `json:"data"`
-	Page           int          `json:"page"`
-	TotalWorkouts  int          `json:"total"`
-	WorkoutsInPage int          `json:"count"`
-	NumPages       int          `json:"page_count"`
-	Instructors    []instructor `json:"instructors"`
+	Data           []shared.Workout `json:"data"`
+	Page           int              `json:"page"`
+	TotalWorkouts  int              `json:"total"`
+	WorkoutsInPage int              `json:"count"`
+	NumPages       int              `json:"page_count"`
+	Instructors    []instructor     `json:"instructors"`
 }
 
 const basePelotonURL = "https://api.onepeloton.com"

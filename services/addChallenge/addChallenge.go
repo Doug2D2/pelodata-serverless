@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -33,6 +33,46 @@ type customChallenge struct {
 	WorkoutTypes    []string `json:"workoutTypes"`
 }
 
+func bodyValidation(c customChallenge) error {
+	// Validation on request body
+	if c.Name == "" {
+		return errors.New("name is required in request body")
+	}
+	if c.Difficulty <= 0.0 {
+		return errors.New("difficulty must be a number greater than 0")
+	}
+	if c.NumWorkoutGoal < 1 {
+		return errors.New("numWorkoutGoal must be a number greater than 0")
+	}
+	if c.StartDate == "" {
+		return errors.New("startDate is required in request body")
+	}
+	sDate, err := time.Parse("2006-01-02", c.StartDate)
+	if err != nil {
+		return errors.New("startDate must be in the format of YYYY-MM-DD")
+	}
+	if sDate.Before(time.Now()) {
+		// StartDate must be after the current date
+		return errors.New("startDate must not be before today")
+	}
+	if c.EndDate == "" {
+		return errors.New("endDate is required in request body")
+	}
+	eDate, err := time.Parse("2006-01-02", c.EndDate)
+	if err != nil {
+		return errors.New("endDate must be in the format of YYYY-MM-DD")
+	}
+	if eDate.Before(sDate) {
+		// EndDate must be after the StartDate
+		return errors.New("endDate must not be before startDate")
+	}
+	if len(c.WorkoutTypes) < 1 {
+		return errors.New("workoutTypes must not be empty")
+	}
+
+	return nil
+}
+
 func addChallenge(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
 	// Get UserID header
 	userID, ok := request.Headers["UserID"]
@@ -49,23 +89,16 @@ func addChallenge(ctx context.Context, request events.APIGatewayV2HTTPRequest) (
 		}, nil
 	}
 
-	// Get db region and name from env
-	tableRegion, exists := os.LookupEnv("table_region")
-	if !exists {
+	tableRegion, tableName, err := shared.GetDBInfo()
+	if err != nil {
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_region env var doesn't exist")
-	}
-	tableName, exists := os.LookupEnv("table_name")
-	if !exists {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, errors.New("table_name env var doesn't exist")
+		}, err
 	}
 
 	// Parse request body
 	c := customChallenge{}
-	err := json.Unmarshal([]byte(request.Body), &c)
+	err = json.Unmarshal([]byte(request.Body), &c)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
@@ -81,116 +114,12 @@ func addChallenge(ctx context.Context, request events.APIGatewayV2HTTPRequest) (
 	c.ID = uuid.New().String()
 	c.CreatedBy = userID
 
-	// Validation on request body
-	if c.Name == "" {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "name is required in request body"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if c.Difficulty <= 0.0 {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "difficulty must be a number greater than 0"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if c.NumWorkoutGoal < 1 {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "numWorkoutGoal must be a number greater than 0"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if c.StartDate == "" {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "startDate is required in request body"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	sDate, err := time.Parse("2006-01-02", c.StartDate)
+	err = bodyValidation(c)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "startDate must be in the format of YYYY-MM-DD"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if sDate.Before(time.Now()) {
-		// StartDate must be after the current date
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "startDate must not be before today"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if c.EndDate == "" {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "endDate is required in request body"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	eDate, err := time.Parse("2006-01-02", c.EndDate)
-	if err != nil {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "endDate must be in the format of YYYY-MM-DD"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-	if eDate.Before(sDate) {
-		// EndDate must be after the StartDate
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "endDate must not be before startDate"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-
-	}
-	if len(c.WorkoutTypes) < 1 {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "workoutTypes must not be empty"
-		}`, http.StatusBadRequest)
+			"message": "%s"
+		}`, http.StatusBadRequest, err.Error())
 
 		return events.APIGatewayProxyResponse{
 			StatusCode: http.StatusBadRequest,
