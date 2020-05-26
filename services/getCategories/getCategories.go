@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
@@ -30,42 +30,21 @@ type getCategoriesResponse struct {
 const basePelotonURL = "https://api.onepeloton.com"
 
 func getCategories(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
-	url := fmt.Sprintf("%s/api/browse_categories?library_type=on_demand", basePelotonURL)
+	method := "GET"
+	url := "/api/browse_categories?library_type=on_demand"
 
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+	body, respHeaders, resCode, err := shared.PelotonRequest(method, url, nil, nil)
 	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to generate http request: %s", err)
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to get categories from Peloton: %s", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to read response body: %s", err)
-	}
-
-	if resp.StatusCode > 399 {
-		if body != nil {
-			return events.APIGatewayProxyResponse{
-				StatusCode: resp.StatusCode,
-				Body:       string(body),
-			}, nil
+		res := events.APIGatewayProxyResponse{
+			StatusCode: resCode,
+			Body:       err.Error(),
 		}
 
-		return events.APIGatewayProxyResponse{
-			StatusCode: resp.StatusCode,
-		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
+		if body != nil {
+			res.Body = string(body)
+		}
+
+		return res, nil
 	}
 
 	getCategoriesRes := &getCategoriesResponse{}
@@ -85,7 +64,7 @@ func getCategories(ctx context.Context, request events.APIGatewayV2HTTPRequest) 
 
 	return events.APIGatewayProxyResponse{
 		StatusCode:        http.StatusOK,
-		MultiValueHeaders: resp.Header,
+		MultiValueHeaders: respHeaders,
 		Body:              string(reply),
 	}, nil
 }

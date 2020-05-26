@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
@@ -51,24 +52,11 @@ type getFiltersResponse struct {
 	Sorts   []sort   `json:"sorts"`
 }
 
-const basePelotonURL = "https://api.onepeloton.com"
-
-func getFilters(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
-	url := fmt.Sprintf("%s/api/ride/filters?library_type=on_demand&", basePelotonURL)
-
-	// Check for query parameters
+func getQueryParams(url string, request events.APIGatewayV2HTTPRequest) (string, error) {
 	if includeIconsStr, ok := request.QueryStringParameters["include_icon_images"]; ok {
 		includeIcons, err := strconv.ParseBool(includeIconsStr)
 		if err != nil {
-			errBody := fmt.Sprintf(`{
-				"status": %d,
-				"message": "include_icon_images must be true or false"
-			}`, http.StatusBadRequest)
-
-			return events.APIGatewayProxyResponse{
-				StatusCode: http.StatusBadRequest,
-				Body:       errBody,
-			}, nil
+			return "", errors.New("include_icon_images must be true or false")
 		}
 		url = fmt.Sprintf("%sinclude_icon_images=%v&", url, includeIcons)
 	}
@@ -76,45 +64,39 @@ func getFilters(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 		url = fmt.Sprintf("%sbrowse_category=%s&", url, cat)
 	}
 
-	url = strings.TrimRight(url, "&")
+	return strings.TrimRight(url, "&"), nil
+}
 
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", url, nil)
+func getFilters(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
+	method := "GET"
+	url := "/api/ride/filters?library_type=on_demand&"
+	var err error
+
+	url, err = getQueryParams(url, request)
 	if err != nil {
+		errBody := fmt.Sprintf(`{
+			"status": %d,
+			"message": "%s"
+		}`, http.StatusBadRequest, err.Error())
+
 		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to generate http request: %s", err)
+			StatusCode: http.StatusBadRequest,
+			Body:       errBody,
+		}, nil
 	}
 
-	// Add peloton required header
-	req.Header.Add("Peloton-Platform", "web")
-
-	resp, err := client.Do(req)
+	body, respHeaders, resCode, err := shared.PelotonRequest(method, url, nil, nil)
 	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to get filters from Peloton: %s", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to read response body: %s", err)
-	}
-
-	if resp.StatusCode > 399 {
-		if body != nil {
-			return events.APIGatewayProxyResponse{
-				StatusCode: resp.StatusCode,
-				Body:       string(body),
-			}, nil
+		res := events.APIGatewayProxyResponse{
+			StatusCode: resCode,
+			Body:       err.Error(),
 		}
 
-		return events.APIGatewayProxyResponse{
-			StatusCode: resp.StatusCode,
-		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
+		if body != nil {
+			res.Body = string(body)
+		}
+
+		return res, nil
 	}
 
 	getFiltersRes := &getFiltersResponse{}
@@ -134,7 +116,7 @@ func getFilters(ctx context.Context, request events.APIGatewayV2HTTPRequest) (ev
 
 	return events.APIGatewayProxyResponse{
 		StatusCode:        http.StatusOK,
-		MultiValueHeaders: resp.Header,
+		MultiValueHeaders: respHeaders,
 		Body:              string(reply),
 	}, nil
 }

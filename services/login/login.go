@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"strings"
 
+	"github.com/Doug2D2/pelodata-serverless/services/shared"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
@@ -26,61 +27,53 @@ type loginResponse struct {
 	SessionID string `json:"session_id"`
 }
 
-const basePelotonURL = "https://api.onepeloton.com"
+func getBody(url string, request events.APIGatewayV2HTTPRequest) ([]byte, int, error) {
+	loginReq := loginRequest{}
+	err := json.Unmarshal([]byte(request.Body), &loginReq)
+	loginReq.Username = strings.TrimSpace(loginReq.Username)
+	loginReq.Password = strings.TrimSpace(loginReq.Password)
+	if err != nil || loginReq.Username == "" || loginReq.Password == "" {
+		return nil, http.StatusBadRequest, errors.New("username and password are required in request body")
+	}
+
+	loginBytes, err := json.Marshal(loginReq)
+	if err != nil {
+		return nil, http.StatusInternalServerError, fmt.Errorf("Unable to marshal request: %s", err)
+	}
+
+	return loginBytes, -1, nil
+}
 
 // login returns the user's Peloton user id based on their username or email and password
 func login(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayProxyResponse, error) {
-	url := fmt.Sprintf("%s/auth/login", basePelotonURL)
+	method := "POST"
+	url := "/auth/login"
 
-	req := loginRequest{}
-	err := json.Unmarshal([]byte(request.Body), &req)
-	req.Username = strings.TrimSpace(req.Username)
-	req.Password = strings.TrimSpace(req.Password)
-	if err != nil || req.Username == "" || req.Password == "" {
+	reqBody, resCode, err := getBody(url, request)
+	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "username and password are required in request body"
-		}`, http.StatusBadRequest)
+			"message": "%s"
+		}`, resCode, err.Error())
 
 		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
+			StatusCode: resCode,
 			Body:       errBody,
 		}, nil
 	}
 
-	loginBytes, err := json.Marshal(req)
+	body, respHeaders, resCode, err := shared.PelotonRequest(method, url, nil, bytes.NewBuffer(reqBody))
 	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to marshal request: %s", err)
-	}
-
-	resp, err := http.Post(url, "application/json", bytes.NewBuffer(loginBytes))
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to login with Peloton: %s", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
-		}, fmt.Errorf("Unable to read response body: %s", err)
-	}
-
-	if resp.StatusCode > 399 {
-		if body != nil {
-			return events.APIGatewayProxyResponse{
-				StatusCode: resp.StatusCode,
-				Body:       string(body),
-			}, nil
+		res := events.APIGatewayProxyResponse{
+			StatusCode: resCode,
+			Body:       err.Error(),
 		}
 
-		return events.APIGatewayProxyResponse{
-			StatusCode: resp.StatusCode,
-		}, fmt.Errorf("Error communicating with Peloton: %s", resp.Status)
+		if body != nil {
+			res.Body = string(body)
+		}
+
+		return res, nil
 	}
 
 	loginRes := &loginResponse{}
@@ -100,7 +93,7 @@ func login(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.
 
 	return events.APIGatewayProxyResponse{
 		StatusCode:        http.StatusOK,
-		MultiValueHeaders: resp.Header,
+		MultiValueHeaders: respHeaders,
 		Body:              string(reply),
 	}, nil
 }
