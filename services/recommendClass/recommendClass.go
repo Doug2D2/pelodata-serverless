@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/google/uuid"
 )
@@ -32,6 +31,48 @@ func bodyValidation(r recommendation) error {
 	if r.RecommendedFor == r.CreatedBy {
 		// User shouldn't be able to recommend to their self
 		return errors.New("Unable to recommend a class to yourself")
+	}
+
+	return nil
+}
+
+func recommendationValidation(r recommendation, workoutData []byte, tableName string, db *dynamodb.DynamoDB) (int, error) {
+	scanInput := &dynamodb.ScanInput{
+		TableName:        aws.String(tableName),
+		FilterExpression: aws.String("CreatedBy = :createdBy and RecommendedFor = :recommendedFor and Workout = :workout"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":createdBy":      {S: aws.String(r.CreatedBy)},
+			":recommendedFor": {S: aws.String(r.RecommendedFor)},
+			":workout":        {B: workoutData},
+		},
+	}
+	scanOutput, err := db.Scan(scanInput)
+	if err != nil {
+		return http.StatusInternalServerError, fmt.Errorf("Unable to get existing recommendations: %s", err.Error())
+	}
+
+	// If the Scan call returns any items, then that recommendation already exists
+	if len(scanOutput.Items) > 0 {
+		return http.StatusBadRequest, errors.New("That recommendation already exists")
+	}
+
+	return -1, nil
+}
+
+func putItem(r recommendation, workoutData []byte, tableName string, db *dynamodb.DynamoDB) error {
+	itemToPut := map[string]*dynamodb.AttributeValue{
+		"Id":             {S: aws.String(r.ID)},
+		"CreatedBy":      {S: aws.String(r.CreatedBy)},
+		"RecommendedFor": {S: aws.String(r.RecommendedFor)},
+		"Workout":        {B: workoutData},
+	}
+	putInput := &dynamodb.PutItemInput{
+		TableName: aws.String(tableName),
+		Item:      itemToPut,
+	}
+	_, err := db.PutItem(putInput)
+	if err != nil {
+		return fmt.Errorf("Unable to save recommendation: %s", err.Error())
 	}
 
 	return nil
@@ -97,63 +138,25 @@ func recommendClass(ctx context.Context, request events.APIGatewayV2HTTPRequest)
 		}, nil
 	}
 
-	sess := session.Must(session.NewSession())
-	config := &aws.Config{
-		Endpoint: aws.String(fmt.Sprintf("dynamodb.%s.amazonaws.com", tableRegion)),
-		Region:   aws.String(tableRegion),
-	}
-	db := dynamodb.New(sess, config)
+	db := shared.GetDB(tableRegion)
 
-	scanInput := &dynamodb.ScanInput{
-		TableName:        aws.String(tableName),
-		FilterExpression: aws.String("CreatedBy = :createdBy and RecommendedFor = :recommendedFor and Workout = :workout"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":createdBy":      {S: aws.String(r.CreatedBy)},
-			":recommendedFor": {S: aws.String(r.RecommendedFor)},
-			":workout":        {B: workoutData},
-		},
-	}
-	scanOutput, err := db.Scan(scanInput)
-	if err != nil {
+	if returnCode, err := recommendationValidation(r, workoutData, tableName, db); err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "Unable to get existing recommendations: %s"
-		}`, http.StatusInternalServerError, err.Error())
+			"message": "%s"
+		}`, returnCode, err.Error())
 
 		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusInternalServerError,
+			StatusCode: returnCode,
 			Body:       errBody,
 		}, nil
 	}
 
-	// If the Scan call returns any items, then that recommendation already exists
-	if len(scanOutput.Items) > 0 {
-		errBody := fmt.Sprintf(`{
-			"status": %d,
-			"message": "That recommendation already exists"
-		}`, http.StatusBadRequest)
-
-		return events.APIGatewayProxyResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       errBody,
-		}, nil
-	}
-
-	itemToPut := map[string]*dynamodb.AttributeValue{
-		"Id":             {S: aws.String(r.ID)},
-		"CreatedBy":      {S: aws.String(r.CreatedBy)},
-		"RecommendedFor": {S: aws.String(r.RecommendedFor)},
-		"Workout":        {B: workoutData},
-	}
-	putInput := &dynamodb.PutItemInput{
-		TableName: aws.String(tableName),
-		Item:      itemToPut,
-	}
-	_, err = db.PutItem(putInput)
+	err = putItem(r, workoutData, tableName, db)
 	if err != nil {
 		errBody := fmt.Sprintf(`{
 			"status": %d,
-			"message": "Unable to save recommendation: %s"
+			"message": "%s"
 		}`, http.StatusInternalServerError, err.Error())
 
 		return events.APIGatewayProxyResponse{
