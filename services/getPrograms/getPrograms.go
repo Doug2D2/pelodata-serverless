@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
@@ -228,12 +227,7 @@ func getPrograms(ctx context.Context, request events.APIGatewayV2HTTPRequest) (e
 	programID, _ := request.PathParameters["programId"]
 	programID = strings.TrimSpace(programID)
 
-	sess := session.Must(session.NewSession())
-	config := &aws.Config{
-		Endpoint: aws.String(fmt.Sprintf("dynamodb.%s.amazonaws.com", tableRegion)),
-		Region:   aws.String(tableRegion),
-	}
-	db := dynamodb.New(sess, config)
+	db := shared.GetDB(tableRegion)
 
 	if len(programID) > 0 {
 		return getProgramByID(db, tableName, userID, programID)

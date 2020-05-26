@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
@@ -241,12 +240,7 @@ func getChallenges(ctx context.Context, request events.APIGatewayV2HTTPRequest) 
 	challengeID, _ := request.PathParameters["challengeId"]
 	challengeID = strings.TrimSpace(challengeID)
 
-	sess := session.Must(session.NewSession())
-	config := &aws.Config{
-		Endpoint: aws.String(fmt.Sprintf("dynamodb.%s.amazonaws.com", tableRegion)),
-		Region:   aws.String(tableRegion),
-	}
-	db := dynamodb.New(sess, config)
+	db := shared.GetDB(tableRegion)
 
 	if len(challengeID) > 0 {
 		return getChallengeByID(db, tableName, userID, challengeID)
