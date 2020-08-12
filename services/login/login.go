@@ -27,8 +27,11 @@ type loginResponse struct {
 	SessionID string `json:"session_id"`
 }
 
+// getBody attempts to generate the request body and return it
+// if an error occurs, the error code and message are returned 
 func getBody(url string, request events.APIGatewayV2HTTPRequest) ([]byte, int, error) {
 	loginReq := loginRequest{}
+	
 	err := json.Unmarshal([]byte(request.Body), &loginReq)
 	loginReq.Username = strings.TrimSpace(loginReq.Username)
 	loginReq.Password = strings.TrimSpace(loginReq.Password)
